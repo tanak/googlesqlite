@@ -16,3 +16,40 @@ cases:
     expected:
       rows:
         - [7.0]
+  # Column values exercise the runtime CAST path (literals are folded by
+  # the analyzer). Error texts match BigQuery's.
+  - desc: string column with surrounding whitespace casts to int
+    sql: SELECT CAST(x AS INT64) FROM UNNEST([' 0x1F ']) AS x
+    expected:
+      rows:
+        - [31]
+  - desc: empty string is not a valid int64
+    sql: SELECT CAST(x AS INT64) FROM UNNEST(['']) AS x
+    expected:
+      error:
+        contains: "Bad int64 value: "
+  - desc: empty string is not a valid double
+    sql: SELECT CAST(x AS FLOAT64) FROM UNNEST(['']) AS x
+    expected:
+      error:
+        contains: "Bad double value: "
+  - desc: only true and false are valid bools
+    sql: SELECT CAST(x AS BOOL) FROM UNNEST(['1']) AS x
+    expected:
+      error:
+        contains: "Bad bool value: 1"
+  - desc: malformed NUMERIC string is an error
+    sql: SELECT CAST(x AS NUMERIC) FROM UNNEST(['abc']) AS x
+    expected:
+      error:
+        contains: "Invalid NUMERIC value: abc"
+  - desc: NUMERIC string out of range is an error
+    sql: SELECT CAST(x AS NUMERIC) FROM UNNEST(['1e30']) AS x
+    expected:
+      error:
+        contains: "Invalid NUMERIC value: 1e30"
+  - desc: BIGNUMERIC string out of range is an error
+    sql: SELECT CAST(x AS BIGNUMERIC) FROM UNNEST(['1e39']) AS x
+    expected:
+      error:
+        contains: "Invalid BIGNUMERIC value: 1e39"

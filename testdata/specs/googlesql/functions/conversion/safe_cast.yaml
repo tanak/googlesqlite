@@ -11,3 +11,154 @@ cases:
     expected:
       rows:
         - [null]
+  # The cases below cast column values so the runtime CAST path runs;
+  # string literals are folded by the analyzer before execution.
+  # Expected values follow the STRING conversion rules in
+  # docs/third_party/googlesql-docs/conversion_functions.md (CAST AS
+  # BOOL / Floating Point / Integer / NUMERIC) and match BigQuery.
+  - desc: empty and blank strings are invalid for every scalar target
+    sql: |
+      SELECT SAFE_CAST(x AS INT64), SAFE_CAST(x AS FLOAT64), SAFE_CAST(x AS BOOL),
+        SAFE_CAST(x AS NUMERIC), SAFE_CAST(x AS BIGNUMERIC)
+      FROM UNNEST(['', ' ', '\t']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - [null, null, null, null, null]
+        - [null, null, null, null, null]
+        - [null, null, null, null, null]
+  - desc: integer strings allow surrounding whitespace, a sign, and hex
+    sql: |
+      SELECT SAFE_CAST(x AS INT64)
+      FROM UNNEST([' 1', '1 ', '\t1\n', '+1', '010', '0x123', '-0x123', ' 0X1f ',
+        '-0x8000000000000000', '0x7FFFFFFFFFFFFFFF']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - [1]
+        - [1]
+        - [1]
+        - [1]
+        - [10]
+        - [291]
+        - [-291]
+        - [31]
+        - [-9223372036854775808]
+        - [9223372036854775807]
+  - desc: malformed or out-of-range integer strings return NULL
+    sql: |
+      SELECT SAFE_CAST(x AS INT64)
+      FROM UNNEST(['1_000', '0x1_F', '0b1', '0x', '1.5', '1e2', '- 1', '1 2',
+        '9223372036854775808', '0x8000000000000000', ' 1']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+  - desc: only "true" and "false" convert to BOOL, case-insensitively
+    sql: |
+      SELECT SAFE_CAST(x AS BOOL)
+      FROM UNNEST(['true', 'TRUE', 'False', '1', '0', 't', ' true ']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - [true]
+        - [true]
+        - [false]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+  - desc: floating point strings follow the floating point literal syntax
+    sql: |
+      SELECT SAFE_CAST(x AS FLOAT64)
+      FROM UNNEST([' 1.5 ', ' +1.5e3 ', '.5', '1.e5', '0x1F', '0x.8', '0x1p4',
+        '1_000', '1e', '.', 'e5', 'infinit']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - [1.5]
+        - [1500.0]
+        - [0.5]
+        - [100000.0]
+        - [31.0]
+        - [0.5]
+        - [16.0]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+  - desc: infinity strings convert case-insensitively with an optional sign
+    sql: |
+      SELECT IS_INF(SAFE_CAST(x AS FLOAT64)), SAFE_CAST(x AS FLOAT64) > 0
+      FROM UNNEST(['inf', '-Infinity', '+INF', '1e400']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - [true, true]
+        - [true, false]
+        - [true, true]
+        - [true, true]
+  - desc: NUMERIC strings round half away from zero to nine fractional digits
+    sql: |
+      SELECT CAST(SAFE_CAST(x AS NUMERIC) AS STRING)
+      FROM UNNEST([' 1.5 ', '+1.5E+2', '00012.5000', '0.0000000015', '-0.0000000025',
+        '5e-10', '1.2345678901', '1e-400', '99999999999999999999999999999.999999999']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - ["1.5"]
+        - ["150"]
+        - ["12.5"]
+        - ["0.000000002"]
+        - ["-0.000000003"]
+        - ["0.000000001"]
+        - ["1.23456789"]
+        - ["0"]
+        - ["99999999999999999999999999999.999999999"]
+  - desc: malformed or out-of-range NUMERIC strings return NULL
+    sql: |
+      SELECT SAFE_CAST(x AS NUMERIC)
+      FROM UNNEST(['0x1F', '1/2', 'inf', 'NaN', '1e', '- 1', '1,000', '1_000',
+        '99999999999999999999999999999.9999999995', '100000000000000000000000000000',
+        '1e99999999999']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+        - [null]
+  - desc: BIGNUMERIC strings round to 38 fractional digits within the BIGNUMERIC range
+    sql: |
+      SELECT CAST(SAFE_CAST(x AS BIGNUMERIC) AS STRING)
+      FROM UNNEST(['0.0000000015', '5e-39',
+        '578960446186580977117854925043439539266.34992332820282019728792003956564819967',
+        '-578960446186580977117854925043439539266.34992332820282019728792003956564819968',
+        '578960446186580977117854925043439539266.34992332820282019728792003956564819968',
+        '-0x1F']) AS x WITH OFFSET o ORDER BY o
+    expected:
+      rows:
+        - ["0.0000000015"]
+        - ["0.00000000000000000000000000000000000001"]
+        - ["578960446186580977117854925043439539266.34992332820282019728792003956564819967"]
+        - ["-578960446186580977117854925043439539266.34992332820282019728792003956564819968"]
+        - [null]
+        - [null]
+  - desc: query parameters are parsed with the same rules
+    sql: SELECT SAFE_CAST(@empty AS INT64), SAFE_CAST(@empty AS BOOL), SAFE_CAST(@padded AS INT64)
+    named_args:
+      empty: ""
+      padded: " 7 "
+    expected:
+      rows:
+        - [null, null, 7]

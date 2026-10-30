@@ -3,6 +3,7 @@ package internal
 import (
 	"fmt"
 
+	"github.com/goccy/go-googlesql"
 	"github.com/goccy/go-json"
 
 	"github.com/goccy/googlesqlite/internal/value"
@@ -24,7 +25,12 @@ func CAST(expr value.Value, fromType, toType *Type, isSafeCast bool) (value.Valu
 		}
 		return nil, err
 	}
-	casted, err := CastValue(to, fromValue)
+	var casted value.Value
+	if s, ok := fromValue.(value.StringValue); ok && fromType.kindAs() == googlesql.TypeKindTypeString {
+		casted, err = castFromString(to, toType.kindAs(), s)
+	} else {
+		casted, err = CastValue(to, fromValue)
+	}
 	if err != nil {
 		if isSafeCast {
 			return nil, nil

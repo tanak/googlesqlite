@@ -8,7 +8,18 @@ import (
 
 type IntValue int64
 
+// asFloat reports whether v is a FLOAT64. An integral FLOAT64 can reach an
+// IntValue operand (e.g. SUM seeded with 1500.0 stored as an integer), so the
+// arithmetic must be promoted instead of truncating v via ToInt64.
+func asFloat(v Value) (float64, bool) {
+	f, ok := v.(FloatValue)
+	return float64(f), ok
+}
+
 func (iv IntValue) Add(v Value) (Value, error) {
+	if f, ok := asFloat(v); ok {
+		return FloatValue(float64(iv) + f), nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return nil, err
@@ -17,6 +28,9 @@ func (iv IntValue) Add(v Value) (Value, error) {
 }
 
 func (iv IntValue) Sub(v Value) (Value, error) {
+	if f, ok := asFloat(v); ok {
+		return FloatValue(float64(iv) - f), nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return nil, err
@@ -25,6 +39,9 @@ func (iv IntValue) Sub(v Value) (Value, error) {
 }
 
 func (iv IntValue) Mul(v Value) (Value, error) {
+	if f, ok := asFloat(v); ok {
+		return FloatValue(float64(iv) * f), nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return nil, err
@@ -33,6 +50,12 @@ func (iv IntValue) Mul(v Value) (Value, error) {
 }
 
 func (iv IntValue) Div(v Value) (Value, error) {
+	if f, ok := asFloat(v); ok {
+		if f == 0 {
+			return nil, fmt.Errorf("zero divided error ( %d / 0 )", iv)
+		}
+		return FloatValue(float64(iv) / f), nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return nil, err
@@ -44,6 +67,9 @@ func (iv IntValue) Div(v Value) (Value, error) {
 }
 
 func (iv IntValue) EQ(v Value) (bool, error) {
+	if f, ok := asFloat(v); ok {
+		return float64(iv) == f, nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return false, fmt.Errorf("failed to convert %v to int64", v)
@@ -52,6 +78,9 @@ func (iv IntValue) EQ(v Value) (bool, error) {
 }
 
 func (iv IntValue) GT(v Value) (bool, error) {
+	if f, ok := asFloat(v); ok {
+		return float64(iv) > f, nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return false, fmt.Errorf("failed to convert %v to int64", v)
@@ -60,6 +89,9 @@ func (iv IntValue) GT(v Value) (bool, error) {
 }
 
 func (iv IntValue) GTE(v Value) (bool, error) {
+	if f, ok := asFloat(v); ok {
+		return float64(iv) >= f, nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return false, fmt.Errorf("failed to convert %v to int64", v)
@@ -68,6 +100,9 @@ func (iv IntValue) GTE(v Value) (bool, error) {
 }
 
 func (iv IntValue) LT(v Value) (bool, error) {
+	if f, ok := asFloat(v); ok {
+		return float64(iv) < f, nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return false, fmt.Errorf("failed to convert %v to int64", v)
@@ -76,6 +111,9 @@ func (iv IntValue) LT(v Value) (bool, error) {
 }
 
 func (iv IntValue) LTE(v Value) (bool, error) {
+	if f, ok := asFloat(v); ok {
+		return float64(iv) <= f, nil
+	}
 	v2, err := v.ToInt64()
 	if err != nil {
 		return false, fmt.Errorf("failed to convert %v to int64", v)

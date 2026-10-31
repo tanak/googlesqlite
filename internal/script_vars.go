@@ -55,7 +55,7 @@ func applyScriptVariables(ctx context.Context, query string, conn *Conn) string 
 	if conn == nil {
 		return query
 	}
-	stmts := splitTopLevelStatements(query)
+	stmts := splitTopLevelStatements(stripSQLComments(query))
 	if len(stmts) == 0 {
 		return query
 	}
@@ -160,6 +160,44 @@ func referencesQueryParameter(expr string) bool {
 		}
 	}
 	return false
+}
+
+// stripSQLComments blanks out `--`, `#` and `/* */` comments outside
+// string and identifier quoting. Comments may contain `;` and quote
+// characters that would corrupt statement splitting, and a trailing
+// comment on a DECLARE line would otherwise become part of the DEFAULT
+// expression that is later inlined. Newlines are kept so error
+// positions still line up.
+func stripSQLComments(query string) string {
+	var b strings.Builder
+	b.Grow(len(query))
+	for i := 0; i < len(query); {
+		c := query[i]
+		switch {
+		case c == '\'' || c == '"' || c == '`':
+			end := scanQuoted(query, i, c)
+			b.WriteString(query[i:end])
+			i = end
+		case c == '#' || (c == '-' && strings.HasPrefix(query[i:], "--")):
+			for i < len(query) && query[i] != '\n' {
+				i++
+			}
+		case c == '/' && strings.HasPrefix(query[i:], "/*"):
+			end := strings.Index(query[i+2:], "*/")
+			if end < 0 {
+				i = len(query)
+				break
+			}
+			end += i + 4
+			b.WriteString(strings.Repeat("\n", strings.Count(query[i:end], "\n")))
+			b.WriteByte(' ')
+			i = end
+		default:
+			b.WriteByte(c)
+			i++
+		}
+	}
+	return b.String()
 }
 
 // splitTopLevelStatements splits on `;` while respecting single

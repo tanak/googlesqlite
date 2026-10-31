@@ -89,3 +89,29 @@ func TestDeclareDefaultQueryParameter(t *testing.T) {
 		})
 	}
 }
+
+// TestScriptCommentsDoNotBreakDeclare checks that comments containing
+// `;` or quotes, including a trailing comment on a DECLARE line, do not
+// split statements or leak into the DEFAULT expression.
+func TestScriptCommentsDoNotBreakDeclare(t *testing.T) {
+	t.Parallel()
+	db, err := sql.Open("googlesqlite", ":memory:?_test=script_comments")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+	query := `DECLARE a INT64 DEFAULT 30; -- 30; it's a "comment"
+DECLARE b INT64 DEFAULT a + 1 # trailing; hash comment
+;
+/* block; comment
+   spanning 'lines' */
+SELECT a, b, '-- not a comment; ok' AS s`
+	var a, b int64
+	var s string
+	if err := db.QueryRowContext(context.Background(), query).Scan(&a, &b, &s); err != nil {
+		t.Fatalf("query: %v", err)
+	}
+	if a != 30 || b != 31 || s != "-- not a comment; ok" {
+		t.Fatalf("got a=%d b=%d s=%q", a, b, s)
+	}
+}

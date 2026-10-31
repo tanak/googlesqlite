@@ -105,6 +105,12 @@ func evaluateScriptVariableExpr(ctx context.Context, conn *Conn, expr string) st
 	if expr == "" {
 		return "NULL"
 	}
+	// A query parameter has no value in this isolated evaluation (SQLite
+	// would bind NULL), so keep the expression and let the statement that
+	// uses the variable bind the caller's arguments.
+	if referencesQueryParameter(expr) {
+		return "(" + expr + ")"
+	}
 	row := conn.QueryRowContext(ctx, "SELECT "+expr)
 	var raw any
 	if err := row.Scan(&raw); err != nil {
@@ -133,6 +139,27 @@ func evaluateScriptVariableExpr(ctx context.Context, conn *Conn, expr string) st
 		return "\"" + strings.ReplaceAll(string(v), "\"", "\\\"") + "\""
 	}
 	return "(" + expr + ")"
+}
+
+// referencesQueryParameter reports whether expr contains a named (@name)
+// or positional (?) parameter outside string and identifier quoting.
+// System variables (@@name) are not query parameters.
+func referencesQueryParameter(expr string) bool {
+	for i := 0; i < len(expr); i++ {
+		switch c := expr[i]; c {
+		case '\'', '"', '`':
+			i = scanQuoted(expr, i, c) - 1
+		case '?':
+			return true
+		case '@':
+			if i+1 < len(expr) && expr[i+1] == '@' {
+				i++
+				continue
+			}
+			return true
+		}
+	}
+	return false
 }
 
 // splitTopLevelStatements splits on `;` while respecting single

@@ -270,3 +270,84 @@ func TestBitCountBytes(t *testing.T) {
 		t.Errorf("BIT_COUNT([]) = %d, want 0", v)
 	}
 }
+
+func bytesResult(t *testing.T, got value.Value, err error) string {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	b, ok := got.(value.BytesValue)
+	if !ok {
+		t.Fatalf("got %T, want BytesValue", got)
+	}
+	return string(b)
+}
+
+func TestBytesBitwise(t *testing.T) {
+	a, b := value.BytesValue("\x0f\xf0"), value.BytesValue("\x01\x01")
+	got, err := BIT_AND(a, b)
+	if s := bytesResult(t, got, err); s != "\x01\x00" {
+		t.Errorf("AND = %x", s)
+	}
+	got, err = BIT_OR(a, b)
+	if s := bytesResult(t, got, err); s != "\x0f\xf1" {
+		t.Errorf("OR = %x", s)
+	}
+	got, err = BIT_XOR(a, b)
+	if s := bytesResult(t, got, err); s != "\x0e\xf1" {
+		t.Errorf("XOR = %x", s)
+	}
+	got, err = BIT_NOT(value.BytesValue("\x0f"))
+	if s := bytesResult(t, got, err); s != "\xf0" {
+		t.Errorf("NOT = %x", s)
+	}
+	if string(a) != "\x0f\xf0" {
+		t.Errorf("input was mutated: %x", string(a))
+	}
+}
+
+func TestBytesBitwiseLengthMismatch(t *testing.T) {
+	for name, fn := range map[string]func(a, b value.Value) (value.Value, error){
+		"AND": BIT_AND, "OR": BIT_OR, "XOR": BIT_XOR,
+	} {
+		if _, err := fn(value.BytesValue("\x01"), value.BytesValue("\x01\x02")); err == nil {
+			t.Errorf("%s: expected an error for unequal lengths", name)
+		}
+	}
+	got, err := BIT_AND(value.BytesValue(""), value.BytesValue(""))
+	if s := bytesResult(t, got, err); s != "" {
+		t.Errorf("empty AND = %x", s)
+	}
+}
+
+func TestBytesShift(t *testing.T) {
+	in := value.BytesValue("\x0f\xf0")
+	cases := []struct {
+		n     int64
+		left  string
+		right string
+	}{
+		{0, "\x0f\xf0", "\x0f\xf0"},
+		{4, "\xff\x00", "\x00\xff"},
+		{8, "\xf0\x00", "\x00\x0f"},
+		{11, "\x80\x00", "\x00\x01"},
+		{16, "\x00\x00", "\x00\x00"},
+		{100, "\x00\x00", "\x00\x00"},
+	}
+	for _, tc := range cases {
+		got, err := BIT_LEFT_SHIFT(in, value.IntValue(tc.n))
+		if s := bytesResult(t, got, err); s != tc.left {
+			t.Errorf("<< %d = %x, want %x", tc.n, s, tc.left)
+		}
+		got, err = BIT_RIGHT_SHIFT(in, value.IntValue(tc.n))
+		if s := bytesResult(t, got, err); s != tc.right {
+			t.Errorf(">> %d = %x, want %x", tc.n, s, tc.right)
+		}
+	}
+	if _, err := BIT_LEFT_SHIFT(in, value.IntValue(-1)); err == nil {
+		t.Error("expected an error for a negative shift")
+	}
+	if _, err := BIT_RIGHT_SHIFT(in, value.IntValue(-1)); err == nil {
+		t.Error("expected an error for a negative shift")
+	}
+}

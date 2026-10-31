@@ -11,3 +11,40 @@ cases:
     expected:
       rows:
         - [16, 64]
+  # BYTES operands are combined byte by byte; shifts treat the value as a
+  # big-endian bit string and keep its length.
+  - desc: BYTES AND / OR / XOR
+    sql: SELECT TO_HEX(b'\x0f\xf0' & b'\x01\x01') AS a, TO_HEX(b'\x0f\xf0' | b'\x01\x01') AS o, TO_HEX(b'\x0f\xf0' ^ b'\x01\x01') AS x
+    expected:
+      rows:
+        - ["0100", "0ff1", "0ef1"]
+  - desc: BYTES NOT
+    sql: SELECT TO_HEX(~b'\x0f') AS n
+    expected:
+      rows:
+        - ["f0"]
+  - desc: BYTES shifts
+    sql: SELECT TO_HEX(b'\x0f\xf0' << 4) AS l4, TO_HEX(b'\x0f\xf0' >> 4) AS r4, TO_HEX(b'\x0f\xf0' << 8) AS l8, TO_HEX(b'\x0f\xf0' << 16) AS l16
+    expected:
+      rows:
+        - ["ff00", "00ff", "f000", "0000"]
+  - desc: BYTES AND with unequal lengths is an error
+    sql: SELECT b'\x01' & b'\x01\x02' AS v
+    expected:
+      error:
+        contains: "requires equal length of the inputs"
+  - desc: BYTES shift by a negative offset is an error
+    sql: SELECT b'\x0f' << -1 AS v
+    expected:
+      error:
+        contains: "Bitwise shift by negative offset"
+  - desc: IPv4 network mask applied with BYTES AND
+    sql: SELECT NET.IP_TO_STRING(NET.SAFE_IP_FROM_STRING('1.2.3.4') & NET.IP_NET_MASK(4, 24)) AS v
+    expected:
+      rows:
+        - ["1.2.3.0"]
+  - desc: IPv6 network mask applied with BYTES AND
+    sql: SELECT NET.IP_TO_STRING(NET.SAFE_IP_FROM_STRING('2001:db8::1') & NET.IP_NET_MASK(16, 32)) AS v
+    expected:
+      rows:
+        - ["2001:db8::"]

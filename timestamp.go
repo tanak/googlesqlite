@@ -78,5 +78,5 @@ func parseEpochFloatTimestamp(v string) (time.Time, error) {
 		micros = m
 	}
 	nanos := micros * int64(time.Microsecond)
-	return time.Unix(seconds, nanos), err
+	return time.Unix(seconds, nanos).UTC(), err
 }

@@ -8,7 +8,7 @@ import (
 )
 
 func TIMESTAMP_MICROS(sec int64) (value.Value, error) {
-	return value.TimestampValue(time.UnixMicro(sec)), nil
+	return value.TimestampValue(time.UnixMicro(sec).UTC()), nil
 }
 
 var BindTimestampMicros = helper.Scalar1(func(a value.Value) (value.Value, error) {

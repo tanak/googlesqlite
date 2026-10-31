@@ -8,7 +8,7 @@ import (
 )
 
 func TIMESTAMP_MILLIS(sec int64) (value.Value, error) {
-	return value.TimestampValue(time.UnixMicro(sec * 1000)), nil
+	return value.TimestampValue(time.UnixMicro(sec * 1000).UTC()), nil
 }
 
 var BindTimestampMillis = helper.Scalar1(func(a value.Value) (value.Value, error) {

@@ -101,6 +101,7 @@ var enabledLanguageFeatures = []googlesql.LanguageFeature{
 	googlesql.LanguageFeatureFeatureGroupByRollup,
 	googlesql.LanguageFeatureFeatureV13NullsFirstLastInOrderBy,
 	googlesql.LanguageFeatureFeatureV13Qualify,
+	googlesql.LanguageFeatureFeatureV14BareArrayAccess,
 	googlesql.LanguageFeatureFeatureV13AllowDashesInTableName,
 	googlesql.LanguageFeatureFeatureGeography,
 	googlesql.LanguageFeatureFeatureV13ExtendedGeographyParsers,

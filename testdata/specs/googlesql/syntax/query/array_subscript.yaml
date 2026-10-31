@@ -21,3 +21,39 @@ cases:
     expected:
       rows:
         - [null]
+  # A bare arr[n] is arr[OFFSET(n)], as in BigQuery.
+  - desc: bare subscript on an array literal
+    sql: SELECT [10, 20][0] AS a, [10, 20][1] AS b
+    expected:
+      rows:
+        - [10, 20]
+  - desc: bare subscript on a function result
+    sql: SELECT SPLIT('a,b', ',')[1] AS v
+    expected:
+      rows:
+        - ["b"]
+  - desc: bare subscript on an array column
+    sql: SELECT x[0] AS v FROM UNNEST([STRUCT([7, 8] AS x)])
+    expected:
+      rows:
+        - [7]
+  - desc: field access after a bare subscript
+    sql: SELECT [STRUCT(1 AS f)][0].f AS v
+    expected:
+      rows:
+        - [1]
+  - desc: bare subscript on a NULL array is NULL
+    sql: SELECT CAST(NULL AS ARRAY<INT64>)[0] AS v
+    expected:
+      rows:
+        - [null]
+  - desc: bare subscript out of range is an error
+    sql: SELECT [10, 20][5] AS v
+    expected:
+      error:
+        contains: "out of range"
+  - desc: bare subscript with a negative index is an error
+    sql: SELECT [10, 20][-1] AS v
+    expected:
+      error:
+        contains: "out of range"

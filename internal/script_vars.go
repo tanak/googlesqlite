@@ -315,6 +315,7 @@ func substituteScriptVariables(stmt string, conn *Conn) string {
 	if conn == nil || len(conn.scriptVars) == 0 {
 		return stmt
 	}
+	shadowed := shadowedScriptVariables(stmt, conn)
 	var b strings.Builder
 	b.Grow(len(stmt))
 	i := 0
@@ -357,6 +358,8 @@ func substituteScriptVariables(stmt string, conn *Conn) string {
 				}
 				if k < len(stmt) && stmt[k] == '(' {
 					b.WriteString(word)
+				} else if shadowed[strings.ToLower(word)] && !isUnnestArgument(stmt, i, j) {
+					b.WriteString(word)
 				} else {
 					b.WriteString(expr)
 				}
@@ -370,6 +373,72 @@ func substituteScriptVariables(stmt string, conn *Conn) string {
 		i++
 	}
 	return b.String()
+}
+
+// shadowedScriptVariables returns the declared variable names that the
+// statement also defines as a column alias (`expr AS name`) or a CTE
+// (`name AS (`). BigQuery resolves columns, aliases and CTEs before
+// script variables, so a bare `name` in such a statement is
+// ambiguous and must not be rewritten blindly.
+func shadowedScriptVariables(stmt string, conn *Conn) map[string]bool {
+	var shadowed map[string]bool
+	prev, prevPrev := "", ""
+	mark := func(word string) {
+		name := strings.ToLower(word)
+		if _, ok := conn.ScriptVariable(name); !ok {
+			return
+		}
+		if shadowed == nil {
+			shadowed = map[string]bool{}
+		}
+		shadowed[name] = true
+	}
+	for i := 0; i < len(stmt); {
+		c := stmt[i]
+		switch {
+		case c == '\'' || c == '"' || c == '`':
+			i = scanQuoted(stmt, i, c)
+			prev, prevPrev = "", ""
+		case isIdentStart(c) && (i == 0 || (!isIdentCont(stmt[i-1]) && stmt[i-1] != '.')):
+			j := i + 1
+			for j < len(stmt) && isIdentCont(stmt[j]) {
+				j++
+			}
+			word := stmt[i:j]
+			if strings.EqualFold(prev, "as") {
+				mark(word)
+			}
+			prevPrev, prev = prev, word
+			i = j
+		case c == '(' && strings.EqualFold(prev, "as"):
+			mark(prevPrev)
+			prev, prevPrev = "", ""
+			i++
+		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
+			i++
+		default:
+			prev, prevPrev = "", ""
+			i++
+		}
+	}
+	return shadowed
+}
+
+// isUnnestArgument reports whether stmt[start:end] is the sole
+// argument of UNNEST(...). That is the only position where a shadowed
+// variable is still substituted: a column of the same name would also
+// be legal there, but an ARRAY column is far rarer than the intended
+// variable.
+func isUnnestArgument(stmt string, start, end int) bool {
+	before := strings.TrimRight(stmt[:start], " \t\r\n")
+	after := strings.TrimLeft(stmt[end:], " \t\r\n")
+	if !strings.HasSuffix(before, "(") || !strings.HasPrefix(after, ")") {
+		return false
+	}
+	before = strings.TrimRight(strings.TrimSuffix(before, "("), " \t\r\n")
+	n := len("unnest")
+	return len(before) >= n && strings.EqualFold(before[len(before)-n:], "unnest") &&
+		(len(before) == n || !isIdentCont(before[len(before)-n-1]))
 }
 
 // matchKeyword returns the suffix after a leading <kw> keyword if

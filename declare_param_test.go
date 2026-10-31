@@ -115,3 +115,44 @@ SELECT a, b, '-- not a comment; ok' AS s`
 		t.Fatalf("got a=%d b=%d s=%q", a, b, s)
 	}
 }
+
+// TestScriptVariablesDoNotLeakAcrossPoolCheckouts checks that a variable
+// declared by one request does not rewrite an unrelated request that
+// reuses the pooled connection, while a pinned connection keeps its
+// session variables.
+func TestScriptVariablesDoNotLeakAcrossPoolCheckouts(t *testing.T) {
+	t.Parallel()
+	db, err := sql.Open("googlesqlite", ":memory:?_test=script_var_leak")
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	defer db.Close()
+	db.SetMaxOpenConns(1)
+	ctx := context.Background()
+
+	if _, err := db.ExecContext(ctx, "DECLARE v INT64 DEFAULT 5"); err != nil {
+		t.Fatalf("DECLARE: %v", err)
+	}
+	var got int64
+	if err := db.QueryRowContext(ctx, "SELECT 1 AS v").Scan(&got); err != nil {
+		t.Fatalf("query after DECLARE on another checkout: %v", err)
+	}
+	if got != 1 {
+		t.Fatalf("got %d, want 1", got)
+	}
+
+	conn, err := db.Conn(ctx)
+	if err != nil {
+		t.Fatalf("Conn: %v", err)
+	}
+	defer conn.Close()
+	if _, err := conn.ExecContext(ctx, "DECLARE w INT64 DEFAULT 7"); err != nil {
+		t.Fatalf("DECLARE on pinned conn: %v", err)
+	}
+	if err := conn.QueryRowContext(ctx, "SELECT w").Scan(&got); err != nil {
+		t.Fatalf("SELECT w: %v", err)
+	}
+	if got != 7 {
+		t.Fatalf("pinned session variable = %d, want 7", got)
+	}
+}

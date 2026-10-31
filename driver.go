@@ -348,6 +348,16 @@ func (c *Conn) IsValid() bool {
 	return !c.dead.Load()
 }
 
+// ResetSession implements database/sql/driver.SessionResetter. The pool
+// calls it when a connection is handed to a new caller, so script
+// variables declared by one request cannot leak into an unrelated one
+// that happens to reuse the same connection. A caller that pins a
+// connection with sql.DB.Conn keeps its variables for the whole session.
+func (c *Conn) ResetSession(context.Context) error {
+	clear(c.scriptVars)
+	return nil
+}
+
 // translateConnDone is the single point that converts the inner
 // "connection is closed" sentinel into the driver-level "drop me"
 // sentinel.
@@ -384,6 +394,8 @@ func (c *Conn) translateConnDone(err error) error {
 // compile time keeps a future refactor that drops the method visible
 // instead of silently regressing the #478 fix.
 var _ driver.Validator = (*Conn)(nil)
+
+var _ driver.SessionResetter = (*Conn)(nil)
 
 func newConn(db *sql.DB, catalog *internal.Catalog) (*Conn, error) {
 	conn, err := db.Conn(context.Background())

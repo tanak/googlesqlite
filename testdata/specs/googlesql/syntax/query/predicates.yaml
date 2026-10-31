@@ -26,6 +26,35 @@ cases:
     expected:
       rows:
         - [true, false]
+  - desc: LIKE underscore matches exactly one character
+    sql: |-
+      SELECT 'AxBy' LIKE 'A_B%' AS hit, 'AB' LIKE 'A_B' AS too_short, 'AxxB' LIKE 'A_B' AS too_long
+    expected:
+      rows:
+        - [true, false, false]
+  - desc: LIKE treats regexp metacharacters literally
+    sql: |-
+      SELECT 'a.c' LIKE 'a.c' AS hit, 'abc' LIKE 'a.c' AS miss, 'a(b' LIKE 'a(b' AS paren
+    expected:
+      rows:
+        - [true, false, true]
+  - desc: LIKE backslash escapes wildcards
+    sql: |-
+      SELECT 'a_b' LIKE 'a\\_b' AS hit, 'axb' LIKE 'a\\_b' AS miss, 'a%b' LIKE 'a\\%b' AS pct, 'a\\b' LIKE 'a\\\\b' AS backslash
+    expected:
+      rows:
+        - [true, false, true, true]
+  - desc: LIKE wildcard matches newlines
+    sql: |-
+      SELECT 'a\nb' LIKE 'a%b' AS pct, 'a\nb' LIKE 'a_b' AS underscore
+    expected:
+      rows:
+        - [true, true]
+  - desc: LIKE is case sensitive
+    sql: SELECT 'ABC' LIKE 'abc' AS r
+    expected:
+      rows:
+        - [false]
   - desc: EXISTS subquery
     sql: |-
       SELECT

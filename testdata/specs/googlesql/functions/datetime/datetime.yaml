@@ -6,3 +6,19 @@ cases:
     expected:
       rows:
         - ["2024-03-15T12:30:45"]
+  # A STRING column argument is coerced to TIMESTAMP (UTC without an offset).
+  - desc: STRING column is parsed as a timestamp
+    sql: SELECT CAST(DATETIME(x) AS STRING) FROM UNNEST(['2026-09-01 20:00:00']) AS x
+    expected:
+      rows:
+        - ["2026-09-01T20:00:00"]
+  - desc: NULL STRING column gives NULL
+    sql: SELECT DATETIME(x) FROM UNNEST([CAST(NULL AS STRING)]) AS x
+    expected:
+      rows:
+        - [null]
+  - desc: unparsable STRING column is an error
+    sql: SELECT DATETIME(x) FROM UNNEST(['not a timestamp']) AS x
+    expected:
+      error:
+        contains: "failed to parse timestamp"

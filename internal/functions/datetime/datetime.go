@@ -76,7 +76,17 @@ func DATETIME(args ...value.Value) (value.Value, error) {
 	if len(args) != 1 && len(args) != 2 {
 		return nil, fmt.Errorf("DATETIME: invalid number of arguments: got %d, want 1 or 2", len(args))
 	}
-	switch v := args[0].(type) {
+	first := args[0]
+	if s, ok := first.(value.StringValue); ok {
+		// BigQuery coerces a STRING argument to TIMESTAMP, using UTC for
+		// strings without an explicit offset.
+		t, err := value.ParseTimestamp(string(s), time.UTC)
+		if err != nil {
+			return nil, err
+		}
+		first = value.TimestampValue(t)
+	}
+	switch v := first.(type) {
 	case value.DateValue:
 		t, err := v.ToTime()
 		if err != nil {

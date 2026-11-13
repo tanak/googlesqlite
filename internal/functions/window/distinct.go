@@ -32,10 +32,11 @@ func (d *distinctNumericWindow) appendValue(v value.Value) error {
 		d.null = append(d.null, true)
 		return nil
 	}
-	// Try to capture the value as int64 first; fall back to float64.
-	if iv, err := v.ToInt64(); err == nil {
+	// Only a real IntValue is captured as int64: FloatValue.ToInt64 truncates
+	// without error, which silently dropped the fractional part.
+	if iv, ok := v.(value.IntValue); ok {
 		d.values = append(d.values, float64(iv))
-		d.ints = append(d.ints, iv)
+		d.ints = append(d.ints, int64(iv))
 		d.hasInt = append(d.hasInt, true)
 		d.null = append(d.null, false)
 		return nil
